@@ -1,8 +1,8 @@
 # est
 
-[![GoDoc](https://godoc.org/github.com/globalsign/est?status.svg)](https://godoc.org/github.com/globalsign/est)
-[![Build Status](https://github.com/globalsign/est/actions/workflows/go.yml/badge.svg)](https://github.com/globalsign/est/actions/workflows/go.yml)
-[![Go Report Card](https://goreportcard.com/badge/github.com/globalsign/est)](https://goreportcard.com/report/github.com/globalsign/est)
+[![GoDoc](https://godoc.org/github.com/motto-phytec/est?status.svg)](https://godoc.org/github.com/motto-phytec/est)
+[![Build Status](https://github.com/motto-phytec/est/actions/workflows/go.yml/badge.svg)](https://github.com/motto-phytec/est/actions/workflows/go.yml)
+[![Go Report Card](https://goreportcard.com/badge/github.com/motto-phytec/est)](https://goreportcard.com/report/github.com/motto-phytec/est)
 
 An implementation of the Enrollment over Secure Transport (EST) certificate
 enrollment protocol as defined by [RFC7030](https://tools.ietf.org/html/rfc7030).
@@ -30,9 +30,9 @@ section 24 of the Trusted Platform Module 2.0 Library specification.
 
 ## Installation
 
-    go get github.com/globalsign/est
-    go install github.com/globalsign/est/cmd/estserver
-    go install github.com/globalsign/est/cmd/estclient
+    go get github.com/motto-phytec/est
+    go install github.com/motto-phytec/est/cmd/estserver
+    go install github.com/motto-phytec/est/cmd/estclient
 
 ## Quickstart
 

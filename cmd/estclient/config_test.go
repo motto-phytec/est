@@ -40,8 +40,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/globalsign/est"
-	"github.com/globalsign/est/internal/mockca"
+	"github.com/motto-phytec/est"
+	"github.com/motto-phytec/est/internal/mockca"
 
 	"github.com/globalsign/pemfile"
 )

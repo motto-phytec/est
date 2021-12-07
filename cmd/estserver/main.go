@@ -35,10 +35,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/globalsign/est"
-	"github.com/globalsign/est/internal/basiclogger"
-	"github.com/globalsign/est/internal/mockca"
 	"github.com/globalsign/pemfile"
+	"github.com/motto-phytec/est"
+	"github.com/motto-phytec/est/internal/basiclogger"
+	"github.com/motto-phytec/est/internal/mockca"
 )
 
 const (
