@@ -24,6 +24,7 @@ import (
 // config contains the EST server configuration.
 type config struct {
 	MockCA              *mockCAConfig `json:"mock_ca,omitempty"`
+	HSMCA               *mockCAConfig `json:"hsm_ca,omitempty"`
 	TLS                 *tlsConfig    `json:"tls,omitempty"`
 	AllowedHosts        []string      `json:"allowed_hosts,omitempty"`
 	HealthCheckPassword string        `json:"healthcheck_password"`
@@ -67,6 +68,10 @@ const sample = `{
         "certificates": "/path/to/CA/certificates.pem",
         "private_key": "/path/to/CA/private/key.pem"
     },
+    "hsm_ca": {
+		"certificates": "/path/to/CA/certificates.pem",
+		"private_key": "slot_0-label_test"
+	},
     "tls": {
         "listen_address": "localhost:8443",
         "certificates": "/path/to/server/certificates.pem",

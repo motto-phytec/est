@@ -38,6 +38,7 @@ import (
 	"github.com/globalsign/pemfile"
 	"github.com/motto-phytec/est"
 	"github.com/motto-phytec/est/internal/basiclogger"
+	hsmca "github.com/motto-phytec/est/internal/hsm"
 	"github.com/motto-phytec/est/internal/mockca"
 )
 
@@ -83,16 +84,25 @@ func main() {
 
 	// Create mock CA. If no mock CA was specified in the configuration file,
 	// create a transient one.
-	var ca *mockca.MockCA
-	if cfg.MockCA != nil {
-		ca, err = mockca.NewFromFiles(cfg.MockCA.Certs, cfg.MockCA.Key)
+	var ca est.CA = &hsmca.HSMCA{}
+
+	if cfg.HSMCA != nil {
+		ca, err = hsmca.NewFromFiles(cfg.HSMCA.Certs, cfg.HSMCA.Key)
 		if err != nil {
-			log.Fatalf("failed to create mock CA: %v", err)
+			log.Fatalf("failed to create HSM CA: %v", err)
 		}
 	} else {
-		ca, err = mockca.NewTransient()
-		if err != nil {
-			log.Fatalf("failed to create mock CA: %v", err)
+		ca = &mockca.MockCA{}
+		if cfg.MockCA != nil {
+			ca, err = mockca.NewFromFiles(cfg.MockCA.Certs, cfg.MockCA.Key)
+			if err != nil {
+				log.Fatalf("failed to create mock CA: %v", err)
+			}
+		} else {
+			ca, err = mockca.NewTransient()
+			if err != nil {
+				log.Fatalf("failed to create mock CA: %v", err)
+			}
 		}
 	}
 
