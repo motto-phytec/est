@@ -63,5 +63,5 @@ func usage() {
 
 // version outputs version information.
 func version() {
-	fmt.Printf("GlobalSign EST Server %s\n", versionString)
+	fmt.Printf("PHYTEC EST Server %s\n", versionString)
 }

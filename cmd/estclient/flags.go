@@ -385,7 +385,7 @@ func usageError(w io.Writer, line int) {
 
 // version outputs version information.
 func version(w io.Writer, set *flag.FlagSet) error {
-	fmt.Fprintf(w, "GlobalSign EST Client %s\n", versionString)
+	fmt.Fprintf(w, "PHYTEC EST Client %s\n", versionString)
 	return nil
 }
 
