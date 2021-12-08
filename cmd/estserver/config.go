@@ -24,7 +24,7 @@ import (
 // config contains the EST server configuration.
 type config struct {
 	MockCA              *mockCAConfig `json:"mock_ca,omitempty"`
-	HSMCA               *mockCAConfig `json:"hsm_ca,omitempty"`
+	HSMCA               *hsmCAConfig  `json:"hsm_ca,omitempty"`
 	TLS                 *tlsConfig    `json:"tls,omitempty"`
 	AllowedHosts        []string      `json:"allowed_hosts,omitempty"`
 	HealthCheckPassword string        `json:"healthcheck_password"`
@@ -37,6 +37,13 @@ type config struct {
 type mockCAConfig struct {
 	Certs string `json:"certificates"`
 	Key   string `json:"private_key"`
+}
+
+type hsmCAConfig struct {
+	Certs string `json:"certificates"`
+	Key   string `json:"private_key"`
+	Pin   string `json:"user_pin"`
+	Temp  string `json:"template"`
 }
 
 // tlsConfig contains the server's TLS configuration.
@@ -69,8 +76,10 @@ const sample = `{
         "private_key": "/path/to/CA/private/key.pem"
     },
     "hsm_ca": {
-		"certificates": "/path/to/CA/certificates.pem",
-		"private_key": "slot_0-label_test"
+        "certificates": "slot_0-label_ca",
+        "private_key": "slot_0-label_key"
+        "user_pin": "1234"
+        "temlate" : "/path/to/certtemplate"
 	},
     "tls": {
         "listen_address": "localhost:8443",
