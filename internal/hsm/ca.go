@@ -19,16 +19,15 @@ import (
 	"context"
 	"crypto"
 	"crypto/rand"
-	"crypto/rsa"
 	"crypto/sha1"
 	"crypto/x509"
 	"encoding/asn1"
 	"errors"
 	"fmt"
-	"io"
+	"log"
 	"math/big"
 	"net/http"
-	"strconv"
+	"os"
 	"time"
 
 	"go.mozilla.org/pkcs7"
@@ -36,7 +35,6 @@ import (
 	"github.com/globalsign/pemfile"
 
 	"github.com/motto-phytec/est"
-	"github.com/motto-phytec/est/internal/tpm"
 )
 
 // HSMCA
@@ -59,6 +57,8 @@ const (
 // Global variables.
 var (
 	oidSubjectAltName = asn1.ObjectIdentifier{2, 5, 29, 17}
+	ghsmPIN           string
+	gtempConfig       *config
 )
 
 func init() {
@@ -234,101 +234,8 @@ func (ca *HSMCA) ServerKeyGen(
 	aps string,
 	r *http.Request,
 ) (*x509.Certificate, []byte, error) {
-	bitsize := 2048
-	if r != nil && r.Header != nil {
-		if v := r.Header.Get(bitSizeHeader); v != "" {
-			var err error
-			bitsize, err = strconv.Atoi(v)
-			if err != nil || (bitsize != 2048 && bitsize != 3072 && bitsize != 4096) {
-				return nil, nil, caError{
-					status: http.StatusBadRequest,
-					desc:   "invalid bit size value",
-				}
-			}
-		}
-	}
-
-	// Generate new key.
-	key, err := rsa.GenerateKey(rand.Reader, bitsize)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to generate RSA key: %w", err)
-	}
-
-	// Copy raw subject and raw SubjectAltName extension from client CSR into
-	// a new CSR signed by the new private key.
-	tmpl := &x509.CertificateRequest{
-		RawSubject: csr.RawSubject,
-	}
-
-	for _, ext := range csr.Extensions {
-		if ext.Id.Equal(oidSubjectAltName) {
-			tmpl.ExtraExtensions = append(tmpl.ExtraExtensions, ext)
-			break
-		}
-	}
-
-	csrDER, err := x509.CreateCertificateRequest(rand.Reader, tmpl, key)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create certificate request: %w", err)
-	}
-
-	newCSR, err := x509.ParseCertificateRequest(csrDER)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to parse certificate request: %w", err)
-	}
-
-	// Enroll for certificate using the new CSR signed with the new key.
-	cert, err := ca.Enroll(ctx, newCSR, aps, r)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	// Marshal generated private key.
-	keyDER, err := x509.MarshalPKCS8PrivateKey(key)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to marshal private key: %w", err)
-	}
-
-	// Based on value of additional path segment, return private key either
-	// as a DER-encoded PKCS8 PrivateKeyInfo structure, or as that structure
-	// wrapped in a CMS SignedData inside a CMS EnvelopedData structure.
-	var retDER []byte
-
-	switch aps {
-	case "pkcs7":
-		// Create the CMS SignedData structure.
-		signedData, err := pkcs7.NewSignedData(keyDER)
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to create CMS SignedData: %w", err)
-		}
-
-		for i, cert := range ca.certs {
-			if i == 0 {
-				err := signedData.AddSigner(cert, ca.key, pkcs7.SignerInfoConfig{})
-				if err != nil {
-					return nil, nil, fmt.Errorf("failed to add signed to CMS SignedData: %w", err)
-				}
-			} else {
-				signedData.AddCertificate(cert)
-			}
-		}
-
-		sdBytes, err := signedData.Finish()
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to finish CMS SignedData: %w", err)
-		}
-
-		// Encrypt the CMS SignedData in a CMS EnvelopedData structure.
-		retDER, err = pkcs7.EncryptUsingPSK(sdBytes, []byte(serverKeyGenPassword))
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to create CMS EnvelopedData: %w", err)
-		}
-
-	default:
-		retDER = keyDER
-	}
-
-	return cert, retDER, nil
+	fmt.Errorf("Server Key Generation with HSM is not supported")
+	return nil, nil, nil
 }
 
 // TPMEnroll requests a new certificate using the TPM 2.0 privacy-preserving
@@ -345,27 +252,8 @@ func (ca *HSMCA) TPMEnroll(
 	aps string,
 	r *http.Request,
 ) ([]byte, []byte, []byte, error) {
-	cert, err := ca.Enroll(ctx, csr, aps, r)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-
-	key := make([]byte, 16)
-	if _, err := io.ReadFull(rand.Reader, key); err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to generate AES key random bytes: %w", err)
-	}
-
-	blob, secret, err := tpm.MakeCredential(key, ekPub, akPub)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-
-	cred, err := pkcs7.EncryptUsingPSK(cert.Raw, key)
-	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to create CMS EnvelopedData: %w", err)
-	}
-
-	return blob, secret, cred, err
+	fmt.Errorf("TPM Enroll with HSM is not supported")
+	return nil, nil, nil, nil
 }
 
 // New creates a new mock certificate authority. If more than one CA certificate
@@ -397,10 +285,31 @@ func New(cacerts []*x509.Certificate, key interface{}) (*HSMCA, error) {
 // certificates should appear in order with the issuing (intermediate) CA
 // certificate first, and the root certificate last. The private key should be
 // associated with the public key in the first certificate in certspath.
-func NewFromFiles(certspath, keypath string) (*HSMCA, error) {
-	certs, err := pemfile.ReadCerts(certspath)
+func NewFromHSM(certspath, keypath, hsmpin, templpath string) (*HSMCA, error) {
+	ghsmPIN = hsmpin
+
+	var err error
+	gtempConfig, err = configFromFile(templpath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to load CA certificates from file: %w", err)
+		log.Fatalf("failed to read configuration file: %v", err)
+	} else {
+		gtempConfig = &config{}
+		gtempConfig.Template.NotBefore = time.Now()
+		gtempConfig.Template.NotAfter = time.Now().Add(time.Hour * 24 * 90)
+		gtempConfig.Template.IsCA = false
+	}
+	var certs []*x509.Certificate
+	if _, err := os.Stat(certspath); err == nil {
+		certs, err = pemfile.ReadCerts(certspath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load CA certificates from file: %w", err)
+		}
+	} else {
+		// load from HSM
+	}
+
+	if _, err := os.Stat(keypath); err == nil {
+		return nil, fmt.Errorf("Error: Private Key as file is not allowed")
 	}
 
 	key, err := pemfile.ReadPrivateKey(keypath)
@@ -422,20 +331,4 @@ func makePublicKeyIdentifier(pub crypto.PublicKey) ([]byte, error) {
 	id := sha1.Sum(keyBytes)
 
 	return id[:], nil
-}
-
-// makeRandomIdentifier makes a random alphanumeric identifier of length n.
-func makeRandomIdentifier(n int) (string, error) {
-	var id = make([]byte, n)
-
-	for i := range id {
-		idx, err := rand.Int(rand.Reader, big.NewInt(int64(len(alphanumerics))))
-		if err != nil {
-			return "", fmt.Errorf("failed to generate random number: %w", err)
-		}
-
-		id[i] = alphanumerics[idx.Int64()]
-	}
-
-	return string(id), nil
 }
