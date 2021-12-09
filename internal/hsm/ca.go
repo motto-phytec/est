@@ -41,7 +41,7 @@ import (
 type HSMCA struct {
 	certs  []*x509.Certificate
 	tmpl   *x509.Certificate
-	signer *crypto.Signer
+	signer crypto.Signer
 }
 
 // Global constants.
@@ -258,7 +258,7 @@ func (ca *HSMCA) TPMEnroll(
 // is provided, they should be in order with the issuing (intermediate) CA
 // certificate first, and the root CA certificate last. The private key should
 // be associated with the public key in the first, issuing CA certificate.
-func New(cacerts []*x509.Certificate, templ *x509.Certificate, signer *crypto.Signer) (*HSMCA, error) {
+func New(cacerts []*x509.Certificate, templ *x509.Certificate, signer crypto.Signer) (*HSMCA, error) {
 	if len(cacerts) < 1 {
 		return nil, errors.New("no CA certificates provided")
 	} else if signer == nil {
