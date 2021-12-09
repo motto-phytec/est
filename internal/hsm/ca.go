@@ -287,6 +287,7 @@ func New(cacerts []*x509.Certificate, templ *x509.Certificate, signer crypto.Sig
 func NewFromHSM(certinter, keypath, templpath string, configpath string) (*HSMCA, error) {
 	var ctx *crypto11.Context
 	var err error
+	var certs []*x509.Certificate
 	var templ *x509.Certificate = createCAtemplate(templpath)
 	if templ == nil {
 		return nil, fmt.Errorf("unknown CA template : %s", templpath)
@@ -294,40 +295,43 @@ func NewFromHSM(certinter, keypath, templpath string, configpath string) (*HSMCA
 	if configpath == "" {
 		return nil, fmt.Errorf("must be start with configuration file")
 	}
-	var certs []*x509.Certificate
+
 	if _, err := os.Stat(certinter); err == nil {
-		certs, err = pemfile.ReadCerts(certinter)
-		if err != nil {
+		var cert, err = pemfile.ReadCert(certinter)
+		if err == nil {
 			return nil, fmt.Errorf("failed to load CA certificates from file: %w", err)
 		}
+		certs = append(certs, cert)
+
 	} else {
 		// load from HSM
 		ctx, err = crypto11.ConfigureFromFile(configpath)
 		if err != nil {
-			return nil, fmt.Errorf("failed to load crypto11 configfile from file: %w", err)
+			return nil, fmt.Errorf("failed to load crypto11 configfile from file %s for ca inter: %w", configpath, err)
 		}
-		certs[0], err = ctx.FindCertificate(nil, []byte(certinter), nil)
+		var cert, err = ctx.FindCertificate(nil, []byte(certinter), nil)
 		if err != nil {
-			return nil, fmt.Errorf("failed to load CA certificates from HSM: %w", err)
+			return nil, fmt.Errorf("failed to load CA %s certificates from HSM: %w", certinter, err)
 		}
+		certs = append(certs, cert)
 	}
 
 	if _, err := os.Stat(keypath); err == nil {
-		return nil, fmt.Errorf("Error: Private Key as file is not allowed")
+		return nil, fmt.Errorf("Error: Private Key as file %s is not allowed", keypath)
 	}
 
 	if _, err := os.Stat(keypath); err == nil {
-		return nil, fmt.Errorf("CA private key must stored in hsm: %w", err)
+		return nil, fmt.Errorf("CA private key %s must stored in hsm: %w", keypath, err)
 	}
 
 	ctx, err = crypto11.ConfigureFromFile(configpath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to load crypto11 configfile from file: %w", err)
+		return nil, fmt.Errorf("failed to load crypto11 configfile from file %s for signer: %w", configpath, err)
 	}
 
 	var signer crypto.Signer
 	if signer, err = ctx.FindKeyPair(nil, []byte(keypath)); err != nil {
-		return nil, fmt.Errorf("failed to load crypto11 key from hsm: %w", err)
+		return nil, fmt.Errorf("failed to load crypto11 key %s from hsm: %w", keypath, err)
 	}
 
 	return New(certs, templ, signer)
