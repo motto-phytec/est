@@ -40,10 +40,11 @@ type mockCAConfig struct {
 }
 
 type hsmCAConfig struct {
-	CertRoot  string `json:"certroot"`
-	CertInter string `json:"certinter"`
-	Key       string `json:"private_key"`
-	Tmplate   string `json:"tmplate"`
+	CertRoot    string `json:"certroot"`
+	CertInter   string `json:"certinter"`
+	Key         string `json:"private_key"`
+	Tmplate     string `json:"tmplate"`
+	Certstorage string `json:"certstorage"`
 }
 
 // tlsConfig contains the server's TLS configuration.
@@ -79,10 +80,11 @@ const sample = `{
         "private_key": "/path/to/CA/private/key.pem"
     },
     "hsm_ca": {
-        "certroot": "slot_0-label_ca",
-        "certinter": "slot_0-label_ca",
-        "private_key": "slot_0-label_key",
+        "certroot": "label",
+        "certinter": "label",
+        "private_key": "label",
         "tmplate" : "ksp0563_v1"
+		"certstorage" : "/path/to/store certs"
 	},
     "tls": {
         "listen_address": "localhost:8443",

@@ -39,20 +39,20 @@ import (
 
 // HSMCA
 type HSMCA struct {
-	certs  []*x509.Certificate
-	tmpl   *x509.Certificate
-	signer crypto.Signer
+	certs       []*x509.Certificate
+	catmpl      *catmplstruct
+	signer      crypto.Signer
+	certstorage string
 }
 
 // Global constants.
 const (
-	alphanumerics              = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
-	bitSizeHeader              = "Bit-Size"
-	csrAttrsAPS                = "csrattrs"
-	defaultCertificateDuration = time.Hour * 24 * 90
-	serverKeyGenPassword       = "pseudohistorical"
-	rootCertificateDuration    = time.Hour * 24
-	triggerErrorsAPS           = "triggererrors"
+	alphanumerics           = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+	bitSizeHeader           = "Bit-Size"
+	csrAttrsAPS             = "csrattrs"
+	serverKeyGenPassword    = "pseudohistorical"
+	rootCertificateDuration = time.Hour * 24
+	triggerErrorsAPS        = "triggererrors"
 )
 
 // Global variables.
@@ -117,7 +117,6 @@ func (ca *HSMCA) CSRAttrs(
 }
 
 // Enroll issues a new certificate with:
-//   - a 90 day duration from the current time
 //   - a randomly generated 128-bit serial number
 //   - a subject and subject alternative name copied from the provided CSR
 //   - a default set of key usages and extended key usages
@@ -171,22 +170,28 @@ func (ca *HSMCA) Enroll(
 	}
 
 	now := time.Now()
-	notAfter := now.Add(defaultCertificateDuration)
+	notAfter := now.Add(ca.catmpl.certduration)
 	if latest := ca.certs[0].NotAfter.Sub(notAfter); latest < 0 {
 		// Don't issue any certificates which expire after the CA certificate.
 		notAfter = ca.certs[0].NotAfter
 	}
 
-	var tmpl = &x509.Certificate{
-		SerialNumber:          sn,
-		NotBefore:             now,
-		NotAfter:              notAfter,
-		RawSubject:            csr.RawSubject,
-		SubjectKeyId:          ski,
-		BasicConstraintsValid: true,
-		IsCA:                  false,
-		KeyUsage:              x509.KeyUsageDigitalSignature,
-		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
+	var tmpl = ca.catmpl.tmpl
+
+	tmpl.SerialNumber = sn
+	tmpl.RawSubject = csr.RawSubject
+	tmpl.SubjectKeyId = ski
+
+	if tmpl.NotBefore == cDefZeroTime {
+		tmpl.NotBefore = now
+	}
+	if tmpl.NotAfter == cDefZeroTime {
+		tmpl.NotAfter = tmpl.NotBefore.Add(ca.catmpl.certduration)
+	}
+
+	if latest := ca.certs[0].NotAfter.Sub(tmpl.NotAfter); latest < 0 {
+		// Don't issue any certificates which expire after the CA certificate.
+		notAfter = ca.certs[0].NotAfter
 	}
 
 	for _, ext := range csr.Extensions {
@@ -207,6 +212,17 @@ func (ca *HSMCA) Enroll(
 		return nil, fmt.Errorf("failed to parse certificate: %w", err)
 	}
 
+	//Save Cert in the path
+
+	fname := ca.certstorage + "/" + cert.Subject.CommonName + ".crt"
+	f, err := os.OpenFile(fname, os.O_WRONLY|os.O_CREATE, 0600)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create device certificate to %s: %w", fname, err)
+	}
+	defer f.Close()
+	if err = pemfile.WriteCert(f, cert); err != nil {
+		return nil, fmt.Errorf("failed to write device certificate %s: %w", fname, err)
+	}
 	return cert, nil
 }
 
@@ -233,8 +249,7 @@ func (ca *HSMCA) ServerKeyGen(
 	aps string,
 	r *http.Request,
 ) (*x509.Certificate, []byte, error) {
-	fmt.Errorf("Server Key Generation with HSM is not supported")
-	return nil, nil, nil
+	return nil, nil, fmt.Errorf("server key generation with HSM is not supported")
 }
 
 // TPMEnroll requests a new certificate using the TPM 2.0 privacy-preserving
@@ -258,7 +273,7 @@ func (ca *HSMCA) TPMEnroll(
 // is provided, they should be in order with the issuing (intermediate) CA
 // certificate first, and the root CA certificate last. The private key should
 // be associated with the public key in the first, issuing CA certificate.
-func New(cacerts []*x509.Certificate, templ *x509.Certificate, signer crypto.Signer) (*HSMCA, error) {
+func New(cacerts []*x509.Certificate, templ *catmplstruct, signer crypto.Signer, certstorage string) (*HSMCA, error) {
 	if len(cacerts) < 1 {
 		return nil, errors.New("no CA certificates provided")
 	} else if signer == nil {
@@ -272,9 +287,10 @@ func New(cacerts []*x509.Certificate, templ *x509.Certificate, signer crypto.Sig
 	}
 
 	return &HSMCA{
-		certs:  cacerts,
-		tmpl:   templ,
-		signer: signer,
+		certs:       cacerts,
+		catmpl:      templ,
+		signer:      signer,
+		certstorage: certstorage,
 	}, nil
 }
 
@@ -284,11 +300,11 @@ func New(cacerts []*x509.Certificate, templ *x509.Certificate, signer crypto.Sig
 // certificates should appear in order with the issuing (intermediate) CA
 // certificate first, and the root certificate last. The private key should be
 // associated with the public key in the first certificate in certspath.
-func NewFromHSM(certinter, keypath, templpath string, configpath string) (*HSMCA, error) {
+func NewFromHSM(certroot, certinter, keypath, templpath, certstorage, configpath string) (*HSMCA, error) {
 	var ctx *crypto11.Context
 	var err error
 	var certs []*x509.Certificate
-	var templ *x509.Certificate = createCAtemplate(templpath)
+	var templ *catmplstruct = createCAtemplate(templpath)
 	if templ == nil {
 		return nil, fmt.Errorf("unknown CA template : %s", templpath)
 	}
@@ -316,6 +332,29 @@ func NewFromHSM(certinter, keypath, templpath string, configpath string) (*HSMCA
 		certs = append(certs, cert)
 	}
 
+	// load root cert only, if exist
+	if _, err := os.Stat(certroot); err == nil {
+		var cert, err = pemfile.ReadCert(certroot)
+		if err == nil {
+			fmt.Printf("failed to load root CA certificates from file: %v", err)
+		} else {
+			certs = append(certs, cert)
+		}
+
+	} else {
+		// load from HSM
+		ctx, err = crypto11.ConfigureFromFile(configpath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load crypto11 configfile from file %s for ca inter: %w", configpath, err)
+		}
+		var cert, err = ctx.FindCertificate(nil, []byte(certroot), nil)
+		if err != nil {
+			fmt.Printf("failed to load root CA %s certificates from HSM: %v", certroot, err)
+		} else {
+			certs = append(certs, cert)
+		}
+	}
+
 	if _, err := os.Stat(keypath); err == nil {
 		return nil, fmt.Errorf("Error: Private Key as file %s is not allowed", keypath)
 	}
@@ -334,7 +373,11 @@ func NewFromHSM(certinter, keypath, templpath string, configpath string) (*HSMCA
 		return nil, fmt.Errorf("failed to load crypto11 key %s from hsm: %w", keypath, err)
 	}
 
-	return New(certs, templ, signer)
+	//path to certstorage exist
+	if err := os.Mkdir(certstorage, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create crypto11 key %s from hsm: %w", certstorage, err)
+	}
+	return New(certs, templ, signer, certstorage)
 }
 
 // makePublicKeyIdentifier builds a public key identifier in accordance with the

@@ -87,7 +87,7 @@ func main() {
 	var ca est.CA = &hsmca.HSMCA{}
 
 	if cfg.HSMCA != nil {
-		ca, err = hsmca.NewFromHSM(cfg.HSMCA.CertInter, cfg.HSMCA.Key, cfg.HSMCA.Tmplate, *fConfig)
+		ca, err = hsmca.NewFromHSM(cfg.HSMCA.CertRoot, cfg.HSMCA.CertInter, cfg.HSMCA.Key, cfg.HSMCA.Tmplate, cfg.HSMCA.Certstorage, *fConfig)
 		if err != nil {
 			log.Fatalf("failed to create HSM CA: %v", err)
 		}
