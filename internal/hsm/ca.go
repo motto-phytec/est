@@ -24,7 +24,6 @@ import (
 	"encoding/asn1"
 	"errors"
 	"fmt"
-	"log"
 	"math/big"
 	"net/http"
 	"os"
@@ -32,6 +31,7 @@ import (
 
 	"go.mozilla.org/pkcs7"
 
+	"github.com/ThalesIgnite/crypto11"
 	"github.com/globalsign/pemfile"
 
 	"github.com/motto-phytec/est"
@@ -39,8 +39,9 @@ import (
 
 // HSMCA
 type HSMCA struct {
-	certs []*x509.Certificate
-	key   interface{}
+	certs  []*x509.Certificate
+	tmpl   *x509.Certificate
+	signer *crypto.Signer
 }
 
 // Global constants.
@@ -57,8 +58,6 @@ const (
 // Global variables.
 var (
 	oidSubjectAltName = asn1.ObjectIdentifier{2, 5, 29, 17}
-	ghsmPIN           string
-	gtempConfig       *config
 )
 
 func init() {
@@ -198,7 +197,7 @@ func (ca *HSMCA) Enroll(
 	}
 
 	// Create and return certificate.
-	der, err := x509.CreateCertificate(rand.Reader, tmpl, ca.certs[0], csr.PublicKey, ca.key)
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, ca.certs[0], csr.PublicKey, ca.signer)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create certificate: %w", err)
 	}
@@ -252,19 +251,18 @@ func (ca *HSMCA) TPMEnroll(
 	aps string,
 	r *http.Request,
 ) ([]byte, []byte, []byte, error) {
-	fmt.Errorf("TPM Enroll with HSM is not supported")
-	return nil, nil, nil, nil
+	return nil, nil, nil, fmt.Errorf("tpm enroll with HSM is not supported")
 }
 
 // New creates a new mock certificate authority. If more than one CA certificate
 // is provided, they should be in order with the issuing (intermediate) CA
 // certificate first, and the root CA certificate last. The private key should
 // be associated with the public key in the first, issuing CA certificate.
-func New(cacerts []*x509.Certificate, key interface{}) (*HSMCA, error) {
+func New(cacerts []*x509.Certificate, templ *x509.Certificate, signer *crypto.Signer) (*HSMCA, error) {
 	if len(cacerts) < 1 {
 		return nil, errors.New("no CA certificates provided")
-	} else if key == nil {
-		return nil, errors.New("no private key provided")
+	} else if signer == nil {
+		return nil, errors.New("no signer provided")
 	}
 
 	for i := range cacerts {
@@ -274,8 +272,9 @@ func New(cacerts []*x509.Certificate, key interface{}) (*HSMCA, error) {
 	}
 
 	return &HSMCA{
-		certs: cacerts,
-		key:   key,
+		certs:  cacerts,
+		tmpl:   templ,
+		signer: signer,
 	}, nil
 }
 
@@ -285,39 +284,53 @@ func New(cacerts []*x509.Certificate, key interface{}) (*HSMCA, error) {
 // certificates should appear in order with the issuing (intermediate) CA
 // certificate first, and the root certificate last. The private key should be
 // associated with the public key in the first certificate in certspath.
-func NewFromHSM(certspath, keypath, hsmpin, templpath string) (*HSMCA, error) {
-	ghsmPIN = hsmpin
-
+func NewFromHSM(certinter, keypath, templpath string, configpath string) (*HSMCA, error) {
+	var ctx *crypto11.Context
 	var err error
-	gtempConfig, err = configFromFile(templpath)
-	if err != nil {
-		log.Fatalf("failed to read configuration file: %v", err)
-	} else {
-		gtempConfig = &config{}
-		gtempConfig.Template.NotBefore = time.Now()
-		gtempConfig.Template.NotAfter = time.Now().Add(time.Hour * 24 * 90)
-		gtempConfig.Template.IsCA = false
+	var templ *x509.Certificate = createCAtemplate(templpath)
+	if templ == nil {
+		return nil, fmt.Errorf("unknown CA template : %s", templpath)
+	}
+	if configpath == "" {
+		return nil, fmt.Errorf("must be start with configuration file")
 	}
 	var certs []*x509.Certificate
-	if _, err := os.Stat(certspath); err == nil {
-		certs, err = pemfile.ReadCerts(certspath)
+	if _, err := os.Stat(certinter); err == nil {
+		certs, err = pemfile.ReadCerts(certinter)
 		if err != nil {
 			return nil, fmt.Errorf("failed to load CA certificates from file: %w", err)
 		}
 	} else {
 		// load from HSM
+		ctx, err = crypto11.ConfigureFromFile(configpath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load crypto11 configfile from file: %w", err)
+		}
+		certs[0], err = ctx.FindCertificate(nil, []byte(certinter), nil)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load CA certificates from HSM: %w", err)
+		}
 	}
 
 	if _, err := os.Stat(keypath); err == nil {
 		return nil, fmt.Errorf("Error: Private Key as file is not allowed")
 	}
 
-	key, err := pemfile.ReadPrivateKey(keypath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to load CA private key from file: %w", err)
+	if _, err := os.Stat(keypath); err == nil {
+		return nil, fmt.Errorf("CA private key must stored in hsm: %w", err)
 	}
 
-	return New(certs, key)
+	ctx, err = crypto11.ConfigureFromFile(configpath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load crypto11 configfile from file: %w", err)
+	}
+
+	var signer crypto.Signer
+	if signer, err = ctx.FindKeyPair(nil, []byte(keypath)); err != nil {
+		return nil, fmt.Errorf("failed to load crypto11 key from hsm: %w", err)
+	}
+
+	return New(certs, templ, signer)
 }
 
 // makePublicKeyIdentifier builds a public key identifier in accordance with the

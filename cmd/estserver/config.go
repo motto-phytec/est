@@ -40,10 +40,10 @@ type mockCAConfig struct {
 }
 
 type hsmCAConfig struct {
-	Certs string `json:"certificates"`
-	Key   string `json:"private_key"`
-	Pin   string `json:"user_pin"`
-	Temp  string `json:"template"`
+	CertRoot  string `json:"certroot"`
+	CertInter string `json:"certinter"`
+	Key       string `json:"private_key"`
+	Tmplate   string `json:"tmplate"`
 }
 
 // tlsConfig contains the server's TLS configuration.
@@ -71,15 +71,19 @@ func configFromFile(filename string) (*config, error) {
 }
 
 const sample = `{
+	"Path" : "/usr/lib/opensc-pkcs11.so",
+	"SlotNumber" : 0,
+    "TokenLabel": "token1",
+    "Pin" : "password"
     "mock_ca": {
         "certificates": "/path/to/CA/certificates.pem",
         "private_key": "/path/to/CA/private/key.pem"
     },
     "hsm_ca": {
-        "certificates": "slot_0-label_ca",
+		"certroot": "slot_0-label_ca",
+        "certinter": "slot_0-label_ca",
         "private_key": "slot_0-label_key"
-        "user_pin": "1234"
-        "temlate" : "/path/to/certtemplate"
+        "tmplate" : "ksp0563_v1"
 	},
     "tls": {
         "listen_address": "localhost:8443",

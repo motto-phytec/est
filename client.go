@@ -101,7 +101,7 @@ type Client struct {
 // Client constants.
 const (
 	estVersion = "v1.0.6"
-	userAgent  = "GlobalSign EST Client " + estVersion + " github.com/motto-phytec/est"
+	userAgent  = "PHYTEC EST Client " + estVersion + " github.com/motto-phytec/est"
 )
 
 // CACerts requests a copy of the current CA certificates.
