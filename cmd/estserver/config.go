@@ -83,8 +83,8 @@ const sample = `{
         "certroot": "label",
         "certinter": "label",
         "private_key": "label",
-        "tmplate" : "ksp0563_v1"
-		"certstorage" : "/path/to/store certs"
+        "tmplate" : "ksp0563_v1",
+        "certstorage" : "/path/to/store certs"
 	},
     "tls": {
         "listen_address": "localhost:8443",
