@@ -71,18 +71,17 @@ func configFromFile(filename string) (*config, error) {
 }
 
 const sample = `{
-	"Path" : "/usr/lib/opensc-pkcs11.so",
-	"SlotNumber" : 0,
+    "Path" : "/usr/lib/opensc-pkcs11.so",
     "TokenLabel": "token1",
-    "Pin" : "password"
+    "Pin" : "password",
     "mock_ca": {
         "certificates": "/path/to/CA/certificates.pem",
         "private_key": "/path/to/CA/private/key.pem"
     },
     "hsm_ca": {
-		"certroot": "slot_0-label_ca",
+        "certroot": "slot_0-label_ca",
         "certinter": "slot_0-label_ca",
-        "private_key": "slot_0-label_key"
+        "private_key": "slot_0-label_key",
         "tmplate" : "ksp0563_v1"
 	},
     "tls": {
